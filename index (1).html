@@ -1,0 +1,145 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Straydoge Community Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@solana/web3.js@1.95.2/lib/index.iife.min.js"></script>
+  <script src="https://unpkg.com/@solana/wallet-adapter-base@0.11.2/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@solana/wallet-adapter-react@0.15.35/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@solana/wallet-adapter-wallets@0.19.32/dist/index.umd.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; }
+    .slot-symbol { font-size: 2rem; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; border: 2px solid #ccc; border-radius: 8px; }
+    .spinning { animation: spin 0.5s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { React, ReactDOM } = window;
+    const { Connection, clusterApiUrl } = window.SolanaWeb3;
+    const { WalletProvider, useWallet } = window.SolanaWalletAdapterReact;
+    const { PhantomWalletAdapter } = window.SolanaWalletAdapterWallets;
+
+    const wallets = [new PhantomWalletAdapter()];
+    const symbols = ['🐶', '💰', '⭐', '🍎', '🍒'];
+
+    function SlotMachine() {
+      const { publicKey, connect, disconnect } = useWallet();
+      const [slots, setSlots] = React.useState(['🐶', '🐶', '🐶']);
+      const [spinning, setSpinning] = React.useState(false);
+      const [message, setMessage] = React.useState('');
+
+      const spin = () => {
+        if (!publicKey) {
+          setMessage('Please connect your wallet to play!');
+          return;
+        }
+        setSpinning(true);
+        setTimeout(() => {
+          const newSlots = Array(3).fill().map(() => symbols[Math.floor(Math.random() * symbols.length)]);
+          setSlots(newSlots);
+          setSpinning(false);
+          const win = newSlots.every((val, i, arr) => val === arr[0]);
+          setMessage(win ? 'You won! 🎉' : 'Try again!');
+        }, 2000);
+      };
+
+      return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+          <h1 className="text-4xl font-bold mb-4 text-gray-800">Straydoge Community Platform</h1>
+          <p className="text-lg mb-6 text-gray-600">Connect your Solana wallet and play the slot machine!</p>
+          {publicKey ? (
+            <div className="flex flex-col items-center">
+              <p className="text-sm mb-4 text-gray-700">Wallet: {publicKey.toBase58().slice(0, 8)}...</p>
+              <button
+                onClick={disconnect}
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 mb-6"
+              >
+                Disconnect Wallet
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={connect}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 mb-6"
+            >
+              Connect Wallet
+            </button>
+          )}
+          <div className="flex space-x-2 mb-4">
+            {slots.map((symbol, index) => (
+              <div key={index} className={`slot-symbol ${spinning ? 'spinning' : ''} bg-white`}>
+                {symbol}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={spin}
+            disabled={spinning}
+            className={`px-6 py-3 text-lg font-semibold rounded ${spinning ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'} text-white`}
+          >
+            {spinning ? 'Spinning...' : 'Spin!'}
+          </button>
+          {message && <p className="mt-4 text-lg text-gray-800">{message}</p>}
+        </div>
+      );
+    }
+
+    function App() {
+      return (
+        <WalletProvider wallets={wallets} autoConnect={false}>
+          <SlotMachine />
+        </WalletProvider>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
